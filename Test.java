@@ -36,7 +36,7 @@ public class Test
          for (int t = 0; t < tSets.length; t++)
          {
             net.calculateOutput(tSets[t].getInputs());
-            String layerString = net.stringifyLayer(net.getOutput());
+            String layerString = Network.stringifyLayer(net.getOutput());
             System.out.println(layerString);
          }
          
