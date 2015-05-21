@@ -1,3 +1,5 @@
+import java.util.Random;
+
 /**
  * 
  * @author JonathanLee
@@ -70,30 +72,46 @@
  */
 public class Network
 {
-   private static final double MIN_ERROR = .06;                            // minimum error before declared satisfactory
+   private static final double DEFAULT_MIN_ERROR = .06;                    // minimum error before declared satisfactory
+   private double minError;
+   
    private static double minTotalError;                                    // minimum total error before declared satisfactory
-   private static final double MIN_DELTA_ERROR = 0.0000001;                // minimum delta error before declared pointless
+   
    private static final int PRINT_ITERATION_GAP = 10000;                   // default # of iterations between outputs to console
+   private double printIterationGap = PRINT_ITERATION_GAP;
    
-   private double[][] kJWeights;          //weights that join the k and j layers.
-   private double[][] jIWeights;          //weights that join the j and i layers.
-   private double[] hiddenLayer;          //values of j (hidden) layer nodes.
-   private double[] outputLayer;          //values of i (output) layer nodes.
-                                          //although outputLayer is an array, it should
-                                          //only have one value as of now.
+   private double[][] kJWeights;          									      // weights that join the k and j layers.
+   private double[][] jIWeights;          									      // weights that join the j and i layers.
+   private double[] hiddenLayer;        								            // values of j (hidden) layer nodes.
+   private double[] outputLayer;         								            // values of i (output) layer nodes.
+                                          									      // although outputLayer is an array, it should
+   																			               // only have one value as of now.
    
-   private TrainingSet[] trainingSets;    //training sets
+   private TrainingSet[] trainingSets;   									         // training sets
    
-   private double lambdaFactor;           //arbitrary factor for computation of lambda value
-   private int maxIterations;             //maximum iterations before minimization is declared pointless
+   public static final double DEFAULT_LAMBDA_FACTOR = .1;
+   private double lambdaFactor;           									      // arbitrary factor for computation of lambda value
+   
+   public static final int DEFAULT_MAX_ITERATIONS = 100000000;				 
+   private int maxIterations;             									      // maximum iterations before minimization is declared pointless
+   
+   public static final double RAND_WEIGHT_RANGE = 0.25;                    // absolute value range of random weights for generator
+   public static final double MIN_RAND_ERROR = 2.5;                        // minimum random error before the randomly generated weights are satisfactory.
+   
+   public static final double MAXIMUM_RAND_ITERATIONS = 5000;
    
    double[] iThetas;
    double[] jThetas;
    
-   private double[][] kJDeltaWeights;     // momentum for KJ Weights
-   private double[][] jIDeltaWeights;     // momentum for JI Weights
+   private double[][] kJDeltaWeights;     									      // momentum for KJ Weights
+   private double[][] jIDeltaWeights;     									      // momentum for JI Weights
    
-   double printIterationGap;
+   
+   Random rand = new Random();
+   
+   private double elapsedTime;                                             // the elapsed time in milliseconds
+   
+   private boolean adaptive;
    
    /**
     * method: Network
@@ -105,9 +123,15 @@ public class Network
     * inputs in the network, expected outputs, maximum iterations,
     * lambda scale, and number of outputs are all variable. 
     * The constructor also constructs the network by creating an array
-    * of neurons with the length of jLayerLength which represents the j-layer
+    * of neurons which represents the j-layer
     * and an array that represents the i layer (which can have multiple outputs).
     * The arguments are simply set to their respective instance variables.
+    * 
+    * Note: You can choose to use only some parameters (many options are supported
+    * by different constructors). However, you must at least provide the training sets
+    * and the weights. The weights do not need to have values in them (then can just be 0)
+    * but their dimensions determine the architecture of the network so that is why they must
+    * be specified.
     * 
     * @param trainingSets        an array of the training sets which
     *                            data structures that match inputs to their
@@ -123,6 +147,7 @@ public class Network
     * @param jIInitialWeights     similar to the kJInitialWeights but instead
     *                            represents weights connected between the j
     *                            and i layers.
+    * @param minError            The minimum error before the network stops minimization.
     * @param lambdaFactor        arbitrary value for calculating lambda to scale
     *                            partial derivatives of error function
     * @param maxIterations       the maximum iterations before minimization
@@ -130,31 +155,179 @@ public class Network
     * @return void                   
     */
    public Network(
-         TrainingSet[] trainingSets,
-         double[][] kJInitialWeights,
-         double[][] jIInitialWeights,
-         double lambdaFactor,
-         int maxIterations)
+	         TrainingSet[] trainingSets,
+	         double[][] kJInitialWeights,
+	         double[][] jIInitialWeights,
+	         double minError,
+	         double lambdaFactor,
+	         int maxIterations)
    {
       this.trainingSets = trainingSets;
       this.hiddenLayer = new double[jIInitialWeights.length];
       this.jThetas = new double[hiddenLayer.length];
-      
+		   
       this.outputLayer = new double[jIInitialWeights[0].length];      
-      this.iThetas = new double[outputLayer.length];
+		this.iThetas = new double[outputLayer.length];
+	   this.kJWeights = kJInitialWeights;
+	   this.jIWeights = jIInitialWeights;
+	   this.minError = minError;
+		   
+	   this.minTotalError = minError * trainingSets.length / 5;
+		   
+	   this.lambdaFactor = lambdaFactor;
+	   this.maxIterations = maxIterations;
+		   
+	   return;
+		  
+	      
+   }  // public Network
+   
+   /**
+    * method: Network
+    * Alternate constructor: requires only the bare minimum
+    * arguments.
+    * @param trainingSets
+    * @param kJInitialWeights
+    * @param jIInitialWeights
+    */
+   public Network(TrainingSet[] trainingSets,
+	         double[][] kJInitialWeights,
+	         double[][] jIInitialWeights)
+   {
+	   this(trainingSets, kJInitialWeights, jIInitialWeights, DEFAULT_MIN_ERROR, DEFAULT_LAMBDA_FACTOR, DEFAULT_MAX_ITERATIONS);
+	   	   
+	   return;
+   }
+   
+   /**
+    * method: Network
+    * Alternate constructor: minimum plus lambdaFactor
+    * @param trainingSets
+    * @param kJInitialWeights
+    * @param jIInitialWeights
+    * @param lambdaFactor
+    */
+   public Network(TrainingSet[] trainingSets,
+	         double[][] kJInitialWeights,
+	         double[][] jIInitialWeights,
+	         double lambdaFactor)
+   {
+	   this(trainingSets, kJInitialWeights, jIInitialWeights, DEFAULT_MIN_ERROR, lambdaFactor, DEFAULT_MAX_ITERATIONS);
+	   
+	   return;
+   }
+   
+   /**
+    * method: Network
+    * Alternate Constructor: minimum plus maxIterations
+    * @param trainingSets
+    * @param kJInitialWeights
+    * @param jIInitialWeights
+    * @param maxIterations
+    */
+   public Network(TrainingSet[] trainingSets,
+	         double[][] kJInitialWeights,
+	         double[][] jIInitialWeights,
+	         int maxIterations)
+   {
+	   this(trainingSets, kJInitialWeights, jIInitialWeights, DEFAULT_MIN_ERROR, DEFAULT_LAMBDA_FACTOR, maxIterations);
+	   
+	   return;
+   }
+   
+   /**
+    * method: Network
+    * Alternate constructor: minimum plus lambdaFactor and maxIterations
+    * @param trainingSets
+    * @param kJInitialWeights
+    * @param jIInitialWeights
+    * @param lambdaFactor
+    * @param maxIterations
+    */
+   public Network(
+	         TrainingSet[] trainingSets,
+	         double[][] kJInitialWeights,
+	         double[][] jIInitialWeights,
+	         double lambdaFactor,
+	         int maxIterations)
+   {
+	   this(trainingSets, kJInitialWeights, jIInitialWeights, DEFAULT_MIN_ERROR, lambdaFactor, maxIterations);
+	   
+	   return;
+   }
+   
+   
+   /**
+    * method: generateRandomWeights
+    * usage: program.generateRandomWeights()
+    * The purpose of this method is to generate random weights that
+    * can then be used to calculate outputs or minimize. A minimum random
+    * is option, otherwise the default will be used which is calculated
+    * (see alternate parameter-less method) 
+    * Choosing a minRandError has an advantage because an small one
+    * will reduce the time taken to train the network. However it also must
+    * be large enough so that the method does not get hung the loop. The generator
+    * will stop trying after a certain amount of iterations and just accept some random
+    * weights.
+    */
+   public void generateRandomWeights(double minRandError)
+   {
+      boolean errorExceedsMin = true;
+      int iterations = 0;
       
-      this.kJWeights = kJInitialWeights;
-      this.jIWeights = jIInitialWeights;
+      while(errorExceedsMin && iterations < MAXIMUM_RAND_ITERATIONS)
+      {
+         populateWeights(kJWeights);
+         populateWeights(jIWeights);
+         
+         double[] errors = new double[trainingSets.length];
+         
+         for(int t = 0; t < trainingSets.length; t++)
+         {
+            double[] expectedOutputs = trainingSets[t].getOutputs();
+            calculateOutput(trainingSets[t].getInputs());
+            errors[t] = this.computeError(expectedOutputs, this.outputLayer);
+         }
+         
+         iterations++;
+         errorExceedsMin = errorExceedsMin(errors, minRandError);
+      }  // while(errorExceedsMin)
             
-      this.lambdaFactor = lambdaFactor;
-      this.maxIterations = maxIterations;
-            
-      this.printIterationGap = PRINT_ITERATION_GAP;
-      
-      this.minTotalError = MIN_ERROR * trainingSets.length / 5;      //set as half the minimum times the number of training sets
+      return;
+   }  // public void generateRandomWeights
+   
+   
+   
+   /**
+    * method: generateRandomWeights
+    * This method is the alternate which calculates its own minRandError
+    * and then passes it to the original.
+    */
+   public void generateRandomWeights()
+   {
+      generateRandomWeights(MIN_RAND_ERROR);
       
       return;
-   }  // public Network
+   }
+   
+   
+   /**
+    * method: populateWeights
+    * The purpose of this metho is to populate.
+    * @param weights
+    */
+   public void populateWeights(double[][] weights)
+   {
+      for (int k = 0; k < weights.length; k++)
+      {
+         for (int j = 0; j < weights[0].length; j++)
+         {
+            weights[k][j] = (rand.nextDouble() - .5) * RAND_WEIGHT_RANGE;
+         }
+      }
+      
+      return;
+   }
    
    /**
     * method: setIterationGap
@@ -167,8 +340,21 @@ public class Network
    public void setIterationGap(int iterationGap)
    {
       this.printIterationGap = iterationGap;
+      return;
    }
    
+   /**
+    * method: setMinError
+    * The purpose of this method is to manually set the 
+    * minimum error for the minimization process before
+    * it is considered satisfactory.
+    * @param minError
+    */
+   public void setMinError(double minError)
+   {
+      this.minError = minError;
+      return;
+   }
    
    /**
     * method: calculateOutput
@@ -223,7 +409,6 @@ public class Network
       }   // for (int i = 0; i < iNodes.length; i++)
       
       return outputLayer;
-      
    }  // public double[] calculateOutput
    
    
@@ -316,7 +501,6 @@ public class Network
       int iterations = 0;                                    // iterations counter to be compared with max iterations
       double[] errors = new double[trainingSets.length];     // length = number of training sets
       
-      double totalError = 0.0;
       
       do  // while(errorExceedsMin(errors) && iterations < MAX_ITERATIONS)
       {
@@ -338,22 +522,18 @@ public class Network
          
          if(iterations % printIterationGap == 0)
          {
-            totalError = 0.0;
             
             debug("iterations: " + iterations);
-            for (int h = 0; h < errors.length; h++)
-            {
-               debug("errors[" + h + "]: " + errors[h]);
-               totalError += errors[h];
-               
-            }
+            printErrors(errors);
+            
             debug("");
          }  // if(iterations % printIterationGap == 0)
          
          iterations++;
          
       }
-      while(errorExceedsMin(errors, MIN_ERROR) && iterations < maxIterations && totalError > minTotalError);
+      while(errorExceedsMin(errors, minError) && iterations < maxIterations);
+      
       
       
       debug("iterations: " + iterations);
@@ -365,6 +545,22 @@ public class Network
             
       return;
    }  // public void minimization
+   
+   /**
+    * method: printErrors
+    * The purpose of this method is to print the errors to the console
+    * for each training set
+    * @param errors
+    */
+   public void printErrors(double[] errors)
+   {
+      double totalError = 0.0;
+      for (int h = 0; h < errors.length; h++)
+      {
+         debug("errors[" + h + "]: " + errors[h]);
+         totalError += errors[h];
+      }
+   }
    
    /**
     * method: computeError
@@ -422,9 +618,11 @@ public class Network
     */
    public void computeDeltaWeights(double[] expectedOutputLayer, double[] outputLayer, double error, double[] inputLayer, int iterations)
    {
-      //double lambda = (lambdaFactor * error);
-      double lambda = (lambdaFactor);
-      lambda = lambdaFactor;
+      double lambda = lambdaFactor;
+      //double lambda = (lambdaFactor);
+      //lambda = lambdaFactor;
+      if(adaptive)
+         lambda *= error;
       double alpha = 1;
       
       double[][] kJMomentum = new double[kJWeights.length][kJWeights[0].length]; 
@@ -438,8 +636,7 @@ public class Network
             
             if(k == 0)                                         // This statement exists to limit the computation time by eliminating
             {                                                  // redundant calculations caused by the arrangement of the for-loops
-                                                               // The variables within this if statement do not depend on exterior variables
-                                                               // other than instance variables which are not altered
+                                                               // The variables within this if block do not depend on k
             
                for (int i = 0; i < outputLayer.length;i++)
                {
@@ -475,108 +672,8 @@ public class Network
             
          }  // for (int j = 0; j < kJWeights[0].length; j++)
       }  // for (int k = 0; k < kJWeights.length; k++)
+      return;
    }  // public void computeDeltaKJWeights
-   
-   /**
-    * method: computeDeltaKJWeights
-    * usage: program.computeDeltaKJWeights()
-    * The purpose of this method is to compute the changes in weights
-    * that should be applied to each weight that joins the K and J
-    * layers of neurons. The method loops through each weight and then 
-    * calculates the direction and value of steepest descent on the error
-    * function for the given weight which is just the negative partial derivative
-    * of the error function with respect to the given weight. The result is then
-    * multiplied by a lambda value which gives the final delta weight for that given weight.
-    * The lambda value is used to scale the derivative. In this case, lambda is just the
-    * current value of the error multiplied by an arbitrary factor. The delta weight
-    * becomes the product of the negative lambda and the partial derivative.
-    * Details about these processes can be found in "Minimizing the Error
-    * Function" By Dr. Eric R. Nelson and
-    * "Rosenblatt Multi-Layer Perceptron" by Jonathan Lee.
-    * 
-    * Edit: backpropagation which is also detailed in the aforementioned papers is now implemented
-    *       which cuts down on the number calculations by reusing values from the initial network evaluation
-    * 
-    * @param expectedOutputLayer      the expected output for a particular training set
-    * @param outputLayer              the actual output the network returned for training
-    *                                  set with current weights
-    * @param error         The calculated error given the expected output and the actual output
-    * @param inputLayer    the array of inputs used for this specific output and training set
-    */
-   public void computeDeltaKJWeights(double[] expectedOutputLayer, double[] outputLayer, double error, double[] inputLayer, int iterations)
-   {
-      for (int k = 0; k < kJWeights.length; k++)
-      {
-         for (int j = 0; j < kJWeights[0].length; j++)
-         {
-            double jOmega = 0.0;
-            
-            for (int i = 0; i < outputLayer.length;i++)
-            {
-               double iOmega = expectedOutputLayer[i] - outputLayer[i];
-               double iPsi = iOmega * activationDerivative(iThetas[i]);
-               
-               jOmega += iPsi * jIWeights[j][i];
-            }
-            
-            double jPsi = jOmega * activationDerivative(jThetas[j]);
-            
-            double aAtK = inputLayer[k];
-            double lambda = lambdaFactor;
-            
-            double delta = lambda * aAtK * jPsi;
-            //debug("delta: " + delta);
-            kJWeights[k][j] += delta;
-            
-         }  // for (int j = 0; j < kJWeights[0].length; j++)
-      }  // for (int k = 0; k < kJWeights.length; k++)
-   }  // public void computeDeltaKJWeights
-   
-   /**
-    * method: computeDeltaJIWeights
-    * usage: program.computeDeltaJIWeights()
-    * The purpose of this method is to compute the changes in weights
-    * that should be applied to each weight that joins the J and I
-    * layers of neurons. The method loops through each weight and then 
-    * calculates the direction and value of steepest descent on the error
-    * function for the given weight which is just the negative partial derivative
-    * of the error function with respect to the given weight. The result is then
-    * multiplied by a lambda value which gives the final delta weight for that given weight.
-    * The lambda value is used to scale the derivative. In this case, lambda is just the
-    * current value of the error multiplied by an arbitrary factor. The delta weight
-    * becomes the product of the negative lambda and the partial derivative.
-    * Details about these processes can be found in "Minimizing the Error
-    * Function" By Dr. Eric R. Nelson and
-    * "Rosenblatt Multi-Layer Perceptron" by Jonathan Lee.
-    * 
-    * Edit: backpropagation which is also detailed in the aforementioned papers is now implemented
-    *       which cuts down on the number calculations by reusing values from the initial network evaluation
-    * 
-    * @param expectedOutputLayer      the expected output for a particular training set
-    * @param outputLayer              the actual output the network returned for training
-    *                                 set with current weights
-    * @param error                    The calculated error given the expected output and the actual output
-    */
-   public void computeDeltaJIWeights(double[] expectedOutputLayer, double[] outputLayer, double error, int iterations)
-   {
-      for (int j = 0; j < jIWeights.length; j++)
-      {
-         for (int i = 0; i < jIWeights[0].length; i++)
-         {
-            double hAtJ = hiddenLayer[j];
-            double iOmega = expectedOutputLayer[i] - outputLayer[i];
-            double iTheta = this.iThetas[i];
-            
-            double iPsi = iOmega * activationDerivative(iTheta);
-            double lambda = lambdaFactor;
-            
-            double delta = lambda * hAtJ * iPsi;
-            jIWeights[j][i] += delta;
-            
-         }  // for (int i = 0; i < jIWeights[0].length; i++)
-      }  // for (int j = 0; j < jIWeights.length; j++)
-   }  // public void computeDeltaJIWeights
-   
    
    
    
@@ -735,5 +832,41 @@ public class Network
       
       return s;
    }  // public static String stringifyLayer
+   
+   /**
+    * method: getElapsedTime
+    * The purpose of this method is to return the elapsed
+    * time during which the minimization process ran.
+    * @return elapsedTime
+    */
+   public double getElapsedTime()
+   {
+      return elapsedTime;
+   }
+   
+   /**
+    * method: setLambdaFactor
+    * This is a setter method for the lambda
+    * factor which controls the learning rate
+    * of the network.
+    * @param lambdaFactor
+    */
+   public void setLambdaFactor(double lambdaFactor)
+   {
+      this.lambdaFactor = lambdaFactor;
+   }
+   
+   /**
+    * method: setAdaptive
+    * This is a setter method for the adaptive instance variable.
+    * Adaptive determines whether the learning rate is adaptive or not.
+    * If not, it will not factor in the magnitude of error into the 
+    * learning rate calculation. By default it is false.
+    * @param adaptive
+    */
+   public void setAdaptive(boolean adaptive)
+   {
+      this.adaptive = adaptive;
+   }
    
 }
