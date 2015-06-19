@@ -16,4 +16,6 @@ It is recommended that you systematically normalize the inputs in some way usual
 
 You can train the network by calling the minimization method and you can run the network by calling the calculateOutput method. You must pass the calculateOutput method a double array of inputs.
 
+I haven't written any documentation here, but the source code is thoroughly documented.
+
 UPDATE May 12, version 1.0.0: The current version of the network was the one used to demonstrate Optical Character Recognition not Facial Recognition.
